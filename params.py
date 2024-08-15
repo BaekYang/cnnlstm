@@ -1,8 +1,9 @@
 import torch
 
 # 데이터 경로 설정
-train_data_path = "C:/LSTM 부가코드/CNN-LSTM/cnnlstm/video"
-test_data_path = "C:/LSTM 부가코드/CNN-LSTM/cnnlstm/test"
+train_data_path = "video"
+test_data_path = "test"
+validation_data_path = "validation"
 
 # 학습 파라미터
 batch_size = 32
