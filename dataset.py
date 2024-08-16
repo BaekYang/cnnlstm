@@ -42,3 +42,19 @@ class CustomDataset(Dataset):
             image = self.transform(image)
 
         return image, label
+    
+if __name__ == "__main__":
+    transform = transforms.Compose([
+        transforms.Resize((64, 64)),
+        transforms.ToTensor()
+    ])
+    
+    dataset = CustomDataset(root_dir="video", transform=transform)
+    
+    # 데이터셋 크기 확인
+    print("Dataset size:", len(dataset))
+    
+    # 첫 번째 데이터 샘플 로드
+    image, label = dataset[0]
+    print("First image size:", image.size())
+    print("Label:", label)    
