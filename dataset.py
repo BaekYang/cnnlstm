@@ -1,6 +1,7 @@
 import os
 from PIL import Image
 import torch
+import params
 from torch.utils.data import Dataset
 from torchvision import transforms
 
@@ -49,7 +50,7 @@ if __name__ == "__main__":
         transforms.ToTensor()
     ])
     
-    dataset = CustomDataset(root_dir="video", transform=transform)
+    dataset = CustomDataset(root_dir=params.train_data_path, transform=transform)
     
     # 데이터셋 크기 확인
     print("Dataset size:", len(dataset))

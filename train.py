@@ -1,5 +1,6 @@
 import torch
 import os
+import time
 from torch.utils.data import DataLoader
 import params
 from model import CNNLSTM
@@ -7,7 +8,7 @@ from dataset import CustomDataset
 from torchvision import transforms
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
-
+import inference
 # 이미지 전처리
 transform = transforms.Compose([
     transforms.Resize((224, 224)),  # 필요한 크기로 조정
@@ -15,11 +16,16 @@ transform = transforms.Compose([
 ])
 
 # TensorBoard 설정
-writer = SummaryWriter(log_dir=os.path.join(params.model_save_path, "logs"))
+tensorboard_path = os.path.join(params.model_save_path, f"{time.strftime('%m-%d_%H:%M', time.localtime(time.time()))}-logs")
+os.makedirs(tensorboard_path, exist_ok=True)
+writer = SummaryWriter(log_dir=tensorboard_path)
 
 # 데이터 로더 설정
-train_dataset = CustomDataset(root_dir=params.train_data_path, transform=transform)
+# train_dataset = CustomDataset(root_dir=params.train_data_path, transform=transform)
+train_dataset = CustomDataset(root_dir="data/train_mini", transform=transform)
 train_loader = DataLoader(train_dataset, batch_size=params.batch_size, shuffle=True)
+validation_dataset = CustomDataset(root_dir=params.validation_data_path, transform=transform)
+validation_loader = DataLoader(validation_dataset, batch_size=params.batch_size, shuffle=False)
 
 # 모델 초기화
 cnn_lstm_model = CNNLSTM(params.input_channels, params.num_classes, params.hidden_dim, params.num_layers).to(params.device)
@@ -35,7 +41,7 @@ if not os.path.exists(params.model_save_path):
     os.makedirs(params.model_save_path)
 
 # 학습 루프 정의
-def train_model(model, optimizer, criterion, train_loader, epochs):
+def train_model(model, optimizer, criterion, train_loader, epochs, valid_loader):
     for epoch in range(epochs):
         print(f"Epoch [{epoch+1}/{epochs}] started...")
         model.train()
@@ -69,13 +75,15 @@ def train_model(model, optimizer, criterion, train_loader, epochs):
         # TensorBoard에 손실과 정확도 기록
         writer.add_scalar('Loss/train', avg_loss, epoch)
         writer.add_scalar('Accuracy/train', accuracy, epoch)
-
-        print(f"Epoch [{epoch+1}/{epochs}], Loss: {avg_loss:.4f}, Accuracy: {accuracy:.2f}%")
+        
+        validataion_accuracy = inference.evaluate_model(model, valid_loader)
+        writer.add_scalar('Accuracy/validation', validataion_accuracy, epoch)
+        print(f"Epoch [{epoch+1}/{epochs}], Loss: {avg_loss:.4f}, Accuracy: {accuracy:.2f}%, validation accuracy: {validataion_accuracy:.2f}%")
 
 # CNN-LSTM 모델 학습 실행
 def train_cnn_lstm():
     print("Training CNN-LSTM model started...")
-    train_model(cnn_lstm_model, optimizer_cnn, criterion, train_loader, params.epochs)
+    train_model(cnn_lstm_model, optimizer_cnn, criterion, train_loader, params.epochs, validation_loader)
     print("Training completed. Saving the model...")
     torch.save(cnn_lstm_model.state_dict(), params.cnn_lstm_model_file)
     print(f"Model saved at {params.cnn_lstm_model_file}")

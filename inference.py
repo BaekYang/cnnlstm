@@ -20,7 +20,7 @@ def evaluate_model(model, data_loader):
     
     accuracy = correct / total
     return accuracy
-if __name__ == "__main__":
+def main():
     # 이미지 전처리
     transform = transforms.Compose([
         transforms.Resize((224, 224)),  # 모델에 맞는 크기로 조정
@@ -43,3 +43,7 @@ if __name__ == "__main__":
     # CNN-LSTM 모델 평가
     cnn_lstm_accuracy = evaluate_model(cnn_lstm_model, test_loader)
     print(f"CNN-LSTM Accuracy: {cnn_lstm_accuracy * 100:.2f}%")
+
+if __name__ == "__main__":
+    main()
+    

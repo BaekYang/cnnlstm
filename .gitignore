@@ -2,3 +2,5 @@ __pycache__/
 video/
 test/
 validation_data/
+.vscode/
+data/
