@@ -9,47 +9,53 @@ from torchvision import transforms
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 import inference
-# 이미지 전처리
+from sklearn.metrics import f1_score
+
+# Image preprocessing
 transform = transforms.Compose([
-    transforms.Resize((224, 224)),  # 필요한 크기로 조정
+    transforms.Resize((224, 224)),  # Adjust to required size
     transforms.ToTensor()
 ])
 
-# TensorBoard 설정
-tensorboard_path = os.path.join(params.model_save_path, f"{time.strftime('%m-%d_%H:%M', time.localtime(time.time()))}-logs")
+# TensorBoard setup
+tensorboard_path = os.path.join(params.model_save_path, f"{time.strftime('%m-%d_%H.%M', time.localtime(time.time()))}-logs")
 os.makedirs(tensorboard_path, exist_ok=True)
 writer = SummaryWriter(log_dir=tensorboard_path)
+print(f"Writing logs in {tensorboard_path}...")
 
-# 데이터 로더 설정
-# train_dataset = CustomDataset(root_dir=params.train_data_path, transform=transform)
-train_dataset = CustomDataset(root_dir="data/train_mini", transform=transform)
+# DataLoader setup
+train_dataset = CustomDataset(root_dir=params.train_data_path, transform=transform)
 train_loader = DataLoader(train_dataset, batch_size=params.batch_size, shuffle=True)
 validation_dataset = CustomDataset(root_dir=params.validation_data_path, transform=transform)
 validation_loader = DataLoader(validation_dataset, batch_size=params.batch_size, shuffle=False)
 
-# 모델 초기화
+# Model initialization
 cnn_lstm_model = CNNLSTM(params.input_channels, params.num_classes, params.hidden_dim, params.num_layers).to(params.device)
 
-# 옵티마이저 및 손실 함수 정의
+# Optimizer and loss function
 optimizer_cnn = torch.optim.Adam(cnn_lstm_model.parameters(), lr=params.learning_rate)
 criterion = torch.nn.CrossEntropyLoss()
+# scheduler = torch.optim.lr_scheduler.StepLR(optimizer_cnn, step_size=10, gamma=0.1)
 
 print("train.py is running...")
 
-# 모델 저장 디렉토리 생성
+# Create model saving directory
 if not os.path.exists(params.model_save_path):
     os.makedirs(params.model_save_path)
 
-# 학습 루프 정의
+# Training loop definition
 def train_model(model, optimizer, criterion, train_loader, epochs, valid_loader):
+    best_val_f1 = 0
     for epoch in range(epochs):
         print(f"Epoch [{epoch+1}/{epochs}] started...")
         model.train()
         total_loss = 0
         correct = 0
         total = 0
-
-        # tqdm을 사용해 진행 상황을 표시
+        
+        all_preds = []
+        all_labels = []
+        
         for data, labels in tqdm(train_loader, desc=f"Training Epoch {epoch+1}/{epochs}"):
             data, labels = data.to(params.device), labels.to(params.device)
 
@@ -69,28 +75,46 @@ def train_model(model, optimizer, criterion, train_loader, epochs, valid_loader)
             total += labels.size(0)
             correct += predicted.eq(labels).sum().item()
 
+            all_preds.extend(predicted.cpu().numpy())
+            all_labels.extend(labels.cpu().numpy())
+
         avg_loss = total_loss / len(train_loader)
         accuracy = 100. * correct / total
+        f1 = 100. * f1_score(all_labels, all_preds, average="weighted")
 
-        # TensorBoard에 손실과 정확도 기록
-        writer.add_scalar('Loss/train', avg_loss, epoch)
-        writer.add_scalar('Accuracy/train', accuracy, epoch)
+        writer.add_scalar('Train_Loss', avg_loss, epoch)
+        writer.add_scalar('Train_Accuracy', accuracy, epoch)
+        writer.add_scalar('Train_F1_score', f1, epoch)
         
-        validataion_accuracy = inference.evaluate_model(model, valid_loader)
-        writer.add_scalar('Accuracy/validation', validataion_accuracy, epoch)
-        print(f"Epoch [{epoch+1}/{epochs}], Loss: {avg_loss:.4f}, Accuracy: {accuracy:.2f}%, validation accuracy: {validataion_accuracy:.2f}%")
+        validation_accuracy, validation_loss, validation_f1 = inference.evaluate_model(model, valid_loader)
+        writer.add_scalar('Validation_Accuracy', validation_accuracy, epoch)
+        writer.add_scalar('Validation_Loss', validation_loss, epoch)
+        writer.add_scalar('Validation_F1_score', validation_f1, epoch)
+        print(f"Epoch [{epoch+1}/{epochs}], T_Loss: {avg_loss:.2f}, T_Accuracy: {accuracy:.2f}%, T_F1: {f1:.2f}%\n \
+              V_Loss: {validation_loss:.2f}, V_Accuracy: {validation_accuracy:.2f}%, V_F1: {validation_f1:.2f}%")
+        
+        # scheduler.step()
 
-# CNN-LSTM 모델 학습 실행
+        if validation_f1 > best_val_f1:
+            best_val_f1 = validation_f1
+            print("Validation F1 improved, saving model...")
+            torch.save(model.state_dict(), os.path.join(params.model_save_path, 'best_model.pth'))
+
+# CNN-LSTM model training execution
 def train_cnn_lstm():
     print("Training CNN-LSTM model started...")
-    train_model(cnn_lstm_model, optimizer_cnn, criterion, train_loader, params.epochs, validation_loader)
-    print("Training completed. Saving the model...")
-    torch.save(cnn_lstm_model.state_dict(), params.cnn_lstm_model_file)
-    print(f"Model saved at {params.cnn_lstm_model_file}")
+    try:
+        train_model(cnn_lstm_model, optimizer_cnn, criterion, train_loader, params.epochs, validation_loader)
+    except Exception as e:
+        print(f"An error occurred during training: {e}")
+    finally:
+        print("Training completed. Saving the final model...")
+        torch.save(cnn_lstm_model.state_dict(), params.cnn_lstm_model_file)
+        print(f"Model saved at {params.cnn_lstm_model_file}")
 
 if __name__ == "__main__":
     print("Starting the training script...")
     train_cnn_lstm()
 
-# TensorBoard 종료
+# Close TensorBoard
 writer.close()
