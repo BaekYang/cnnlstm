@@ -5,11 +5,16 @@ from model import CNNLSTM
 from dataset import CustomDataset
 from torchvision import transforms
 
+from sklearn.metrics import f1_score
 # 평가 함수 정의
 def evaluate_model(model, data_loader):
+    criterion = torch.nn.CrossEntropyLoss()
     model.eval()
     correct = 0
     total = 0
+    total_loss = 0
+    all_preds = []
+    all_labels = []
     with torch.no_grad():
         for data, labels in data_loader:
             data, labels = data.to(params.device), labels.to(params.device)
@@ -17,9 +22,20 @@ def evaluate_model(model, data_loader):
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
-    
-    accuracy = correct / total
-    return accuracy
+            loss = criterion(outputs, labels)
+            if torch.isnan(loss) or torch.isinf(loss):
+                print("NaN or Inf found in loss, skipping this batch.")
+                continue
+            
+            total_loss += loss.item()
+
+            all_preds.extend(predicted.cpu().numpy())
+            all_labels.extend(labels.cpu().numpy())
+
+    avg_loss = total_loss / len(data_loader)
+    accuracy = 100. * correct / total
+    f1 = 100. * f1_score(all_labels, all_preds, average="weighted")
+    return accuracy, avg_loss, f1
 def main():
     # 이미지 전처리
     transform = transforms.Compose([
@@ -41,8 +57,10 @@ def main():
 
 
     # CNN-LSTM 모델 평가
-    cnn_lstm_accuracy = evaluate_model(cnn_lstm_model, test_loader)
+    cnn_lstm_accuracy, loss, f1 = evaluate_model(cnn_lstm_model, test_loader)
     print(f"CNN-LSTM Accuracy: {cnn_lstm_accuracy * 100:.2f}%")
+    print(f"CNN-LSTM Loss: {loss:.4f}")
+    print(f"CNN-LSTM F1 Score: {f1:.4f}")
 
 if __name__ == "__main__":
     main()
